@@ -33,12 +33,8 @@ export async function POST(request: NextRequest) {
     const basePath = process.cwd();
     const scriptPath = join(basePath, 'scripts', 'process-dp.py');
 
-    let pythonCmd = 'python3';
-    try {
-      execSync('python3 --version', { stdio: 'ignore' });
-    } catch {
-      pythonCmd = 'python';
-    }
+    // ✅ FIXED: Always use python3 on Vercel (python command doesn't exist)
+    const pythonCmd = 'python3';
 
     const command = `"${pythonCmd}" "${scriptPath}" "${inputPath}" "${outputPath}" "${name}"`;
     console.log(`[DP] Running: ${command}`);
@@ -68,8 +64,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error('[DP] Full Error:', error);
     return NextResponse.json({ 
-      error: error.message || 'Internal server error',
-      details: process.env.NODE_ENV === 'development' ? error.stack : undefined 
+      error: error.message || 'Failed to generate cutout' 
     }, { status: 500 });
   } finally {
     try {
