@@ -9,7 +9,6 @@ const _geistMono = Geist_Mono({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: 'NIMEPA DP Generator - Beach Cleanup Flyer',
   description: 'Create your profile photo for the NIMEPA inaugural beach cleanup flyer with one click',
-  generator: 'v0.app',
   icons: {
     icon: [
       {
@@ -21,8 +20,8 @@ export const metadata: Metadata = {
         media: '(prefers-color-scheme: dark)',
       },
       {
-        url: '/icon.svg',
-        type: 'image/svg+xml',
+        url: '/apple-icon.png',
+        type: 'image/png',
       },
     ],
     apple: '/apple-icon.png',
