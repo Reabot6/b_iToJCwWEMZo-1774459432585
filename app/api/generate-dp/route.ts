@@ -5,7 +5,8 @@ import { join } from 'path';
 import { existsSync } from 'fs';
 
 export async function POST(request: NextRequest) {
-  const tempDir = join(process.cwd(), 'tmp', 'dp-generator');
+  // Use Vercel's writable /tmp directory instead of process.cwd()
+  const tempDir = '/tmp/dp-generator';
   let inputPath = '';
   let outputPath = '';
 
@@ -20,13 +21,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'File too large. Max 5MB' }, { status: 400 });
     }
 
+    // Create temp directory in /tmp (writable on Vercel)
     if (!existsSync(tempDir)) {
       await mkdir(tempDir, { recursive: true });
     }
 
     const timestamp = Date.now();
     inputPath = join(tempDir, `input-${timestamp}.png`);
-    outputPath = join(tempDir, `cutout-${timestamp}.png`);   // Changed to PNG for transparency
+    outputPath = join(tempDir, `cutout-${timestamp}.png`);
 
     const buffer = Buffer.from(await file.arrayBuffer());
     await writeFile(inputPath, buffer);
@@ -62,7 +64,7 @@ export async function POST(request: NextRequest) {
 
     return new NextResponse(imageBuffer, {
       headers: {
-        'Content-Type': 'image/png',   // Important: PNG for transparency
+        'Content-Type': 'image/png',
         'Content-Disposition': `attachment; filename="person-cutout.png"`,
       },
     });
