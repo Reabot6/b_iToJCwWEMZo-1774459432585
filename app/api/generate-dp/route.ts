@@ -1,78 +1,76 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { writeFile, unlink, mkdir } from 'fs/promises';
-import { execSync } from 'child_process';
-import { join } from 'path';
-import { existsSync } from 'fs';
+import { removeBackground } from '@imgly/background-removal-node';
+
+export const maxDuration = 60;
+export const runtime = 'nodejs';
+
+const MIME_MAP: Record<string, string> = {
+  'image/jpeg':    'image/jpeg',
+  'image/jpg':     'image/jpeg',
+  'image/png':     'image/png',
+  'image/webp':    'image/webp',
+  'image/gif':     'image/gif',
+  'image/bmp':     'image/bmp',
+  'image/tiff':    'image/tiff',
+  'image/heic':    'image/jpeg',
+  'image/heif':    'image/jpeg',
+};
 
 export async function POST(request: NextRequest) {
-  const tempDir = '/tmp/dp-generator';
-  let inputPath = '';
-  let outputPath = '';
-
   try {
     const formData = await request.formData();
     const file = formData.get('image') as File;
-    const name = (formData.get('name') as string || '').trim();
 
-    if (!file) return NextResponse.json({ error: 'No image file provided' }, { status: 400 });
-    if (file.size > 5 * 1024 * 1024) {
-      return NextResponse.json({ error: 'File too large. Max 5MB' }, { status: 400 });
+    if (!file) {
+      return NextResponse.json({ error: 'No image file provided' }, { status: 400 });
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      return NextResponse.json({ error: 'File too large. Max 10MB' }, { status: 400 });
     }
 
-    if (!existsSync(tempDir)) {
-      await mkdir(tempDir, { recursive: true });
+    // Resolve mime type — browser sometimes sends empty or wrong type
+    let mimeType = file.type?.toLowerCase() || '';
+
+    if (!mimeType || !MIME_MAP[mimeType]) {
+      const ext = file.name?.split('.').pop()?.toLowerCase() ?? '';
+      const extMap: Record<string, string> = {
+        jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+        webp: 'image/webp', gif: 'image/gif', bmp: 'image/bmp',
+        tiff: 'image/tiff', tif: 'image/tiff',
+        heic: 'image/jpeg', heif: 'image/jpeg',
+      };
+      mimeType = extMap[ext] ?? 'image/jpeg';
     }
 
-    const timestamp = Date.now();
-    inputPath = join(tempDir, `input-${timestamp}.png`);
-    outputPath = join(tempDir, `cutout-${timestamp}.png`);
+    const resolvedMime = MIME_MAP[mimeType] ?? 'image/jpeg';
 
-    const buffer = Buffer.from(await file.arrayBuffer());
-    await writeFile(inputPath, buffer);
+    console.log(`[DP] File: ${file.name} | browser type: "${file.type}" → resolved: ${resolvedMime}`);
 
-    const basePath = process.cwd();
-    const scriptPath = join(basePath, 'scripts', 'process-dp.py');
+    const arrayBuffer = await file.arrayBuffer();
 
-    // ✅ FIXED: Always use python3 on Vercel (python command doesn't exist)
-    const pythonCmd = 'python3';
+    // Pass as a Blob with explicit correct mime type — required by the library
+    const inputBlob = new Blob([arrayBuffer], { type: resolvedMime });
 
-    const command = `"${pythonCmd}" "${scriptPath}" "${inputPath}" "${outputPath}" "${name}"`;
-    console.log(`[DP] Running: ${command}`);
+    console.log('[DP] Running background removal...');
+    const resultBlob = await removeBackground(inputBlob);
 
-    const output = execSync(command, {
-      encoding: 'utf-8',
-      maxBuffer: 30 * 1024 * 1024,
-    });
+    const resultBuffer = Buffer.from(await resultBlob.arrayBuffer());
 
-    const jsonMatch = output.match(/\{[\s\S]*?\}(?=\s*$)/);
-    const result = jsonMatch ? JSON.parse(jsonMatch[0]) : { success: false, error: 'No JSON from Python' };
+    console.log('[DP] Done. Returning PNG cutout.');
 
-    if (!result.success) {
-      return NextResponse.json({ error: result.error || 'Processing failed' }, { status: 500 });
-    }
-
-    const { readFile } = await import('fs/promises');
-    const imageBuffer = await readFile(outputPath);
-
-    return new NextResponse(imageBuffer, {
+    return new NextResponse(resultBuffer, {
       headers: {
         'Content-Type': 'image/png',
-        'Content-Disposition': `attachment; filename="person-cutout.png"`,
+        'Content-Disposition': 'attachment; filename="person-cutout.png"',
       },
     });
 
   } catch (error: any) {
-    console.error('[DP] Full Error:', error);
-    return NextResponse.json({ 
-      error: error.message || 'Failed to generate cutout' 
-    }, { status: 500 });
-  } finally {
-    try {
-      if (inputPath && existsSync(inputPath)) await unlink(inputPath);
-      if (outputPath && existsSync(outputPath)) await unlink(outputPath);
-    } catch (e) {
-      console.warn('[DP] Cleanup warning:', e);
-    }
+    console.error('[DP] Error:', error);
+    return NextResponse.json(
+      { error: error.message || 'Failed to remove background' },
+      { status: 500 }
+    );
   }
 }
 
