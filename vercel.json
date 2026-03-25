@@ -1,13 +1,9 @@
 {
-  "builds": [
-    {
-      "src": "scripts/process-dp.py",
-      "use": "@vercel/python"
-    }
-  ],
   "functions": {
     "api/**/*.ts": {
-      "runtime": "nodejs22.x"
+      "runtime": "nodejs22.x",
+      "memory": 1024,
+      "maxDuration": 60
     }
   }
 }
