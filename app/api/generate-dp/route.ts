@@ -5,7 +5,6 @@ import { join } from 'path';
 import { existsSync } from 'fs';
 
 export async function POST(request: NextRequest) {
-  // Use Vercel's writable /tmp directory instead of process.cwd()
   const tempDir = '/tmp/dp-generator';
   let inputPath = '';
   let outputPath = '';
@@ -16,12 +15,10 @@ export async function POST(request: NextRequest) {
     const name = (formData.get('name') as string || '').trim();
 
     if (!file) return NextResponse.json({ error: 'No image file provided' }, { status: 400 });
-
     if (file.size > 5 * 1024 * 1024) {
       return NextResponse.json({ error: 'File too large. Max 5MB' }, { status: 400 });
     }
 
-    // Create temp directory in /tmp (writable on Vercel)
     if (!existsSync(tempDir)) {
       await mkdir(tempDir, { recursive: true });
     }
@@ -36,7 +33,6 @@ export async function POST(request: NextRequest) {
     const basePath = process.cwd();
     const scriptPath = join(basePath, 'scripts', 'process-dp.py');
 
-    // Detect Python command (Windows vs Linux)
     let pythonCmd = 'python3';
     try {
       execSync('python3 --version', { stdio: 'ignore' });
@@ -49,11 +45,11 @@ export async function POST(request: NextRequest) {
 
     const output = execSync(command, {
       encoding: 'utf-8',
-      maxBuffer: 20 * 1024 * 1024,
+      maxBuffer: 30 * 1024 * 1024,
     });
 
     const jsonMatch = output.match(/\{[\s\S]*?\}(?=\s*$)/);
-    const result = jsonMatch ? JSON.parse(jsonMatch[0]) : { success: false };
+    const result = jsonMatch ? JSON.parse(jsonMatch[0]) : { success: false, error: 'No JSON from Python' };
 
     if (!result.success) {
       return NextResponse.json({ error: result.error || 'Processing failed' }, { status: 500 });
@@ -70,8 +66,11 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error: any) {
-    console.error('[DP] Error:', error);
-    return NextResponse.json({ error: error.message || 'Failed to generate cutout' }, { status: 500 });
+    console.error('[DP] Full Error:', error);
+    return NextResponse.json({ 
+      error: error.message || 'Internal server error',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined 
+    }, { status: 500 });
   } finally {
     try {
       if (inputPath && existsSync(inputPath)) await unlink(inputPath);
